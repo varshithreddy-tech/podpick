@@ -141,3 +141,30 @@ export async function unlockProfile(id: number, pin: string) {
   await writeUnlocks(u);
   return p;
 }
+
+/**
+ * Which of these profiles are open on this device right now (no PIN, or PIN entered within 30 min).
+ * Refreshes the idle timer for all of them in a single cookie write.
+ */
+export async function unlockedAmong(ids: number[]): Promise<number[]> {
+  await requireDevice();
+  if (!ids.length) return [];
+  const rows = await q<Profile>("select * from profiles where id = any($1::int[])", [ids]);
+  const u = await readUnlocks();
+  const ok: number[] = [];
+  let changed = false;
+  for (const p of rows) {
+    if (!p.pin_hash) {
+      ok.push(p.id);
+      continue;
+    }
+    const last = u[String(p.id)];
+    if (last && Date.now() - last <= UNLOCK_IDLE_MS) {
+      u[String(p.id)] = Date.now();
+      changed = true;
+      ok.push(p.id);
+    }
+  }
+  if (changed) await writeUnlocks(u);
+  return ok;
+}

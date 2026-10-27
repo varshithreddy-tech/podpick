@@ -32,6 +32,8 @@ export type Item = {
   topic_tags: string[];
   mood_tags: string[];
   summary: string | null;
+  paywalled?: boolean;
+  we_subscribe?: boolean;
 };
 
 export async function getTopics(): Promise<string[]> {
@@ -59,7 +61,7 @@ export type Filters = {
  */
 export async function eligibleItems(f: Filters, opts: { applyMood?: boolean; limit?: number } = {}): Promise<Item[]> {
   const slot = effectiveSlot(f.participants);
-  const readMin = slot.key === "u30" ? 0 : Math.floor(slot.min / 60);
+  const readMin = slot.key === "u30" || slot.key === null ? 0 : Math.floor(slot.min / 60);
   const readMax = Math.ceil(slot.max / 60);
   const profileIds = f.participants.map((p) => p.profileId);
   const topics = f.participants.map((p) => p.topic);
@@ -94,7 +96,7 @@ export async function eligibleItems(f: Filters, opts: { applyMood?: boolean; lim
 
   const order = "order by coalesce(ci.views, 0) desc";
   const limit = opts.limit ? `limit ${Number(opts.limit)}` : "";
-  return q<Item>(`select ci.* from content_items ci join sources s on s.id = ci.source_id where ${where.join(" and ")} ${order} ${limit}`, params);
+  return q<Item>(`select ci.*, s.paywalled, s.we_subscribe from content_items ci join sources s on s.id = ci.source_id where ${where.join(" and ")} ${order} ${limit}`, params);
 }
 
 export async function needsFetch(f: Filters): Promise<boolean> {

@@ -51,9 +51,20 @@ export async function POST(req: Request) {
       return { ok: true };
     }
     if (value === "save") {
+      // In a together session, saving puts the item on both participants' lists.
+      let targets = [pid];
+      if (sessionId) {
+        const rows = await q<{ profile_id: number }>(
+          `select sp.profile_id from session_participants sp join sessions s on s.id = sp.session_id
+           where s.id = $1 and s.mode = 'together'`,
+          [sessionId],
+        );
+        if (rows.some((r) => r.profile_id === pid)) targets = rows.map((r) => r.profile_id);
+      }
       await q(
-        "insert into feedback (profile_id, item_id, session_id, value) values ($1, $2, $3, 'save') on conflict do nothing",
-        [pid, iid, sessionId ?? null],
+        `insert into feedback (profile_id, item_id, session_id, value)
+         select t, $2, $3, 'save' from unnest($1::int[]) as t on conflict do nothing`,
+        [targets, iid, sessionId ?? null],
       );
       return { ok: true };
     }
