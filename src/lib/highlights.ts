@@ -27,7 +27,7 @@ export function tokens(s: string): Set<string> {
 /** The first few meaningful words of a title (usually the guest and topic), in order. Long exact titles search poorly. */
 export function keywords(title: string, n = 5): string {
   const seen = new Set<string>();
-  for (const w of title.toLowerCase().replace(/[^p{L}p{N}s]/gu, " ").split(/s+/)) if (w.length >= 4 && !STOP.has(w)) seen.add(w);
+  for (const w of title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)) if (w.length >= 4 && !STOP.has(w)) seen.add(w);
   return [...seen].slice(0, n).join(" ");
 }
 
