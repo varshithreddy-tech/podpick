@@ -1,5 +1,5 @@
 import { q } from "./db";
-import { MIN_FULL_LENGTH_SEC, MOODS } from "./config";
+import { MIN_DURATION_SEC, MOODS } from "./config";
 import { geminiJson } from "./gemini";
 import { getTopics } from "./library";
 
@@ -8,7 +8,7 @@ const MAX_PER_ASK = 75;
 
 const SYSTEM = `You check items for a personal content recommender. You judge ONLY from the metadata given (title, description, channel or publication, length). Never invent content you cannot see in the metadata.
 For each item decide:
-- is_quality: true only for a real podcast, long-form conversation/interview, quality long-form article, or an earnings call transcript from a listed company. False for academic papers, journal articles, research abstracts, whitepapers, textbooks and course material (only readable magazine-style long-form journalism or analysis counts), lectures, vlogs, compilations, highlight reels, clips, trailers, news briefs, SEO pages, listicles, press releases, stock-price pages, livestream recordings with no substance, music, or sales content. Items of type "watch" are videos, "listen" are audio podcasts, "read" are articles or transcripts.
+- is_quality: true for a real podcast, long-form conversation/interview, quality long-form article, or an earnings call transcript from a listed company, AND ALSO for short clips, shorts, highlights, trailers, compilations and short videos that carry real substance (for example a key moment from an interview, a talk excerpt, an explainer, a funny or inspiring moment). Short and highlight content is welcome. False only for: music videos, ads and sales content, spam or clickbait with no substance, news briefs, SEO pages, listicles, press releases, stock-price pages, livestream recordings with no substance, academic papers, journal articles, research abstracts, whitepapers, textbooks and course material. Items of type "watch" are videos, "listen" are audio podcasts, "read" are articles or transcripts.
 - read_minutes: for type "read" only, your best estimate of reading time in whole minutes from the title and snippet (a typical long-form article is 8-30; an earnings call transcript is 40-90). Use 0 for watch and listen items.
 - reason: one short line explaining the decision.
 - language: "en" for English, "hi" for Hindi (including Hinglish), otherwise "other".
@@ -54,13 +54,13 @@ type Result = {
 
 /**
  * Gemini STEP 1: check each new item once and store the result on it.
- * Items under 20 minutes are rejected by code and never sent to Gemini.
+ * Items under 30 seconds are rejected by code and never sent to Gemini.
  * Returns how many items could not be checked (Gemini failed twice); those stay unchecked and are never shown.
  */
 export async function checkNewItems(): Promise<{ checked: number; failed: number }> {
   await q(
-    `update content_items set is_quality = false, check_reason = 'Under 20 minutes', checked_at = now()
-     where checked_at is null and format in ('watch','listen') and coalesce(duration_sec, 0) < ${MIN_FULL_LENGTH_SEC}`,
+    `update content_items set is_quality = false, check_reason = 'Under 30 seconds', checked_at = now()
+     where checked_at is null and format in ('watch','listen') and coalesce(duration_sec, 0) < ${MIN_DURATION_SEC}`,
   );
   const rows = await q<Row>(
     `select id, title, description, source_name, duration_sec, hint_language, format from (
@@ -85,7 +85,7 @@ export async function checkNewItems(): Promise<{ checked: number; failed: number
           type: r.format,
           title: r.title,
           source: r.source_name,
-          minutes: r.duration_sec ? Math.round(r.duration_sec / 60) : null,
+          minutes: r.duration_sec ? Math.max(1, Math.round(r.duration_sec / 60)) : null,
           language_hint: r.hint_language || null,
           description: (r.description ?? "").slice(0, 600),
         })),

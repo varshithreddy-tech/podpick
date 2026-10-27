@@ -9,14 +9,16 @@ export const DEFAULT_TOPICS = [
 
 // Time slots in seconds. Lower bound inclusive, upper bound exclusive.
 export const TIME_SLOTS = [
-  { key: "u30", label: "Under 30 min", min: 1200, max: 1800 },
+  { key: "u10", label: "Under 10 min", min: 0, max: 600 },
+  { key: "u30", label: "Under 30 min", min: 0, max: 1800 },
   { key: "30-60", label: "30–60 min", min: 1800, max: 3600 },
   { key: "60-90", label: "60–90 min", min: 3600, max: 5400 },
   { key: "90+", label: "90+ min", min: 5400, max: 1_000_000 },
 ] as const;
 export type TimeKey = (typeof TIME_SLOTS)[number]["key"];
 
-export const MIN_FULL_LENGTH_SEC = 1200;
+// Clips, shorts and highlights are allowed; only near-empty items (under 30 seconds) are dropped.
+export const MIN_DURATION_SEC = 30;
 export const LIBRARY_TARGET = 30;
 export const MIN_SCORE = 6;
 export const MAX_PICKS = 5;

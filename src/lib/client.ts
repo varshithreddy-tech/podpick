@@ -17,6 +17,8 @@ export async function api<T = any>(path: string, body?: unknown, method = "POST"
 
 export function fmtLength(item: { duration_sec: number | null; read_min: number | null }) {
   if (item.read_min) return `${item.read_min} min read`;
-  const m = Math.round((item.duration_sec ?? 0) / 60);
+  const sec = item.duration_sec ?? 0;
+  if (sec < 60) return `${sec} sec`;
+  const m = Math.round(sec / 60);
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ""}`.trim() : `${m} min`;
 }

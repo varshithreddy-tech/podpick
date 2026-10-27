@@ -1,6 +1,6 @@
 import { q, q1 } from "./db";
 import {
-  LIBRARY_TARGET, MIN_FULL_LENGTH_SEC, MOOD_QUERIES, TIME_SLOTS, TOPIC_QUERIES, slotByKey,
+  LIBRARY_TARGET, MIN_DURATION_SEC, MOOD_QUERIES, TIME_SLOTS, TOPIC_QUERIES, slotByKey,
 } from "./config";
 import { QuotaError, channelUploads, searchVideos, type YtVideo } from "./sources/youtube";
 import type { NewItem } from "./sources/podcasts";
@@ -45,7 +45,7 @@ export async function getTopics(): Promise<string[]> {
 /** Together mode uses the shorter of the two time limits; "Any" imposes no limit. */
 export function effectiveSlot(participants: Participant[]) {
   const slots = participants.map((p) => slotByKey(p.timeKey)).filter(Boolean) as (typeof TIME_SLOTS)[number][];
-  if (!slots.length) return { min: MIN_FULL_LENGTH_SEC, max: 1_000_000, key: null as string | null };
+  if (!slots.length) return { min: 0, max: 1_000_000, key: null as string | null };
   const s = slots.reduce((a, b) => (b.max < a.max ? b : a));
   return { min: s.min, max: s.max, key: s.key as string };
 }
@@ -62,7 +62,7 @@ export type Filters = {
  */
 export async function eligibleItems(f: Filters, opts: { applyMood?: boolean; limit?: number } = {}): Promise<Item[]> {
   const slot = effectiveSlot(f.participants);
-  const readMin = slot.key === "u30" || slot.key === null ? 0 : Math.floor(slot.min / 60);
+  const readMin = Math.floor(slot.min / 60);
   const readMax = Math.ceil(slot.max / 60);
   const profileIds = f.participants.map((p) => p.profileId);
   const topics = f.participants.map((p) => p.topic);
@@ -80,7 +80,7 @@ export async function eligibleItems(f: Filters, opts: { applyMood?: boolean; lim
 
   const dMin = add(slot.min), dMax = add(slot.max), rMin = add(readMin), rMax = add(readMax);
   where.push(
-    `((ci.format in ('watch','listen') and ci.duration_sec >= ${dMin} and ci.duration_sec >= ${MIN_FULL_LENGTH_SEC} and ci.duration_sec < ${dMax})
+    `((ci.format in ('watch','listen') and ci.duration_sec >= ${dMin} and ci.duration_sec >= ${MIN_DURATION_SEC} and ci.duration_sec < ${dMax})
       or (ci.format = 'read' and ci.read_min >= ${rMin} and ci.read_min < ${rMax}))`,
   );
 
@@ -179,6 +179,9 @@ export async function fetchFromYouTube(f: Filters): Promise<string[]> {
     }
 
     // 2. Discovery search (~100 units each): the 2 least-recently-run queries for this ask.
+    // Short asks (or "Any" time) search all lengths so clips and highlights are found; long-only asks stay on YouTube's >20 min bucket.
+    const slot = effectiveSlot(f.participants);
+    const length = slot.min < 1200 ? ("any" as const) : ("long" as const);
     const keys = searchQueriesFor(f.participants.map((p) => p.topic), f.participants.map((p) => p.mood))
       .flatMap((query) => (["relevance", "viewCount"] as const).map((order) => ({ query, order })));
     const ran = await q<{ key: string; ran_at: string }>(
@@ -187,12 +190,15 @@ export async function fetchFromYouTube(f: Filters): Promise<string[]> {
     const lastRun = new Map(ran.map((r) => [r.key, new Date(r.ran_at).getTime()]));
     const cutoff = Date.now() - 12 * 3600 * 1000;
     const due = keys
-      .map((k) => ({ ...k, key: `${k.query}|${k.order}`, last: lastRun.get(`${k.query}|${k.order}`) ?? 0 }))
+      .map((k) => {
+        const key = `${k.query}|${k.order}|${length}`;
+        return { ...k, key, last: lastRun.get(key) ?? 0 };
+      })
       .filter((k) => k.last < cutoff)
       .sort((a, b) => a.last - b.last)
       .slice(0, 2);
     for (const k of due) {
-      const vids = await searchVideos(k.query, k.order);
+      const vids = await searchVideos(k.query, k.order, length);
       await upsertVideos(vids);
       await q("insert into fetch_log (kind, key, result_count) values ('yt_search', $1, $2)", [k.key, vids.length]);
     }

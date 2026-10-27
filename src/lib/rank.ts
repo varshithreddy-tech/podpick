@@ -113,7 +113,7 @@ export async function rankItems(candidates: Item[], participants: Participant[])
       type: c.format,
       title: c.title,
       source: c.source_name,
-      minutes: c.duration_sec ? Math.round(c.duration_sec / 60) : c.read_min,
+      minutes: c.duration_sec ? Math.max(1, Math.round(c.duration_sec / 60)) : c.read_min,
       summary: c.summary,
       topics: c.topic_tags,
       moods: c.mood_tags,
