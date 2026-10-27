@@ -40,6 +40,7 @@ async function callOnce<T>(system: string, prompt: string, schema: object): Prom
         { role: "user", content: prompt },
       ],
       response_format: { type: "json_schema", json_schema: { name: "result", strict: true, schema } },
+      reasoning: { effort: "low" },
       usage: { include: true },
     }),
   });
