@@ -8,7 +8,8 @@ const MAX_PER_ASK = 75;
 
 const SYSTEM = `You check items for a personal content recommender. You judge ONLY from the metadata given (title, description, channel or publication, length). Never invent content you cannot see in the metadata.
 For each item decide:
-- is_quality: true only for a real podcast, long-form conversation/interview, or quality long-form article. False for lectures, vlogs, compilations, highlight reels, clips, trailers, news briefs, SEO pages, press releases, livestream recordings with no substance, music, or sales content.
+- is_quality: true only for a real podcast, long-form conversation/interview, quality long-form article, or an earnings call transcript from a listed company. False for lectures, vlogs, compilations, highlight reels, clips, trailers, news briefs, SEO pages, listicles, press releases, stock-price pages, livestream recordings with no substance, music, or sales content. Items of type "watch" are videos, "listen" are audio podcasts, "read" are articles or transcripts.
+- read_minutes: for type "read" only, your best estimate of reading time in whole minutes from the title and snippet (a typical long-form article is 8-30; an earnings call transcript is 40-90). Use 0 for watch and listen items.
 - reason: one short line explaining the decision.
 - language: "en" for English, "hi" for Hindi (including Hinglish), otherwise "other".
 - topics: zero or more tags chosen ONLY from the allowed topic list.
@@ -33,8 +34,9 @@ const SCHEMA = {
           topics: { type: "array", items: { type: "string" } },
           moods: { type: "array", items: { type: "string" } },
           summary: { type: "string" },
+          read_minutes: { type: "integer" },
         },
-        required: ["id", "is_quality", "reason", "language", "topics", "moods", "summary"],
+        required: ["id", "is_quality", "reason", "language", "topics", "moods", "summary", "read_minutes"],
       },
     },
   },
@@ -47,7 +49,7 @@ type Row = {
 };
 type Result = {
   id: string; is_quality: boolean; reason: string; language: string;
-  topics: string[]; moods: string[]; summary: string;
+  topics: string[]; moods: string[]; summary: string; read_minutes: number;
 };
 
 /**
@@ -61,8 +63,10 @@ export async function checkNewItems(): Promise<{ checked: number; failed: number
      where checked_at is null and format in ('watch','listen') and coalesce(duration_sec, 0) < ${MIN_FULL_LENGTH_SEC}`,
   );
   const rows = await q<Row>(
-    `select id, title, description, source_name, duration_sec, hint_language, format
-     from content_items where checked_at is null order by coalesce(views, 0) desc limit ${MAX_PER_ASK}`,
+    `select id, title, description, source_name, duration_sec, hint_language, format from (
+       select *, row_number() over (partition by format order by coalesce(views, 0) desc, id desc) as rn
+       from content_items where checked_at is null
+     ) t order by rn, format limit ${MAX_PER_ASK}`,
   );
   if (!rows.length) return { checked: 0, failed: 0 };
 
@@ -99,12 +103,14 @@ export async function checkNewItems(): Promise<{ checked: number; failed: number
             topics: (r.topics ?? []).filter((t) => topics.includes(t)),
             moods: (r.moods ?? []).filter((m) => (MOODS as readonly string[]).includes(m)),
             summary: String(r.summary ?? "").slice(0, 300),
+            read_minutes: Number.isFinite(r.read_minutes) && r.read_minutes > 0 ? Math.round(r.read_minutes) : null,
           }));
         if (clean.length) {
           await q(
             `update content_items ci set is_quality = x.is_quality, check_reason = x.reason, language = x.language,
-               topic_tags = x.topics, mood_tags = x.moods, summary = x.summary, checked_at = now()
-             from jsonb_to_recordset($1::jsonb) as x(id bigint, is_quality boolean, reason text, language text, topics text[], moods text[], summary text)
+               topic_tags = x.topics, mood_tags = x.moods, summary = x.summary,
+               read_min = case when ci.format = 'read' then x.read_minutes else ci.read_min end, checked_at = now()
+             from jsonb_to_recordset($1::jsonb) as x(id bigint, is_quality boolean, reason text, language text, topics text[], moods text[], summary text, read_minutes int)
              where ci.id = x.id`,
             [JSON.stringify(clean)],
           );

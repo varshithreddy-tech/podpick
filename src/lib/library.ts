@@ -3,6 +3,7 @@ import {
   LIBRARY_TARGET, MIN_FULL_LENGTH_SEC, MOOD_QUERIES, TIME_SLOTS, TOPIC_QUERIES, slotByKey,
 } from "./config";
 import { QuotaError, channelUploads, searchVideos, type YtVideo } from "./sources/youtube";
+import type { NewItem } from "./sources/podcasts";
 
 export type Participant = {
   profileId: number;
@@ -144,7 +145,7 @@ export async function upsertVideos(videos: YtVideo[]) {
 
 // ---- Fetching from YouTube (only when the library is thin) ----
 
-function searchQueriesFor(topics: (string | null)[], moods: (string | null)[]): string[] {
+export function searchQueriesFor(topics: (string | null)[], moods: (string | null)[]): string[] {
   const out = new Set<string>();
   const named = topics.filter(Boolean) as string[];
   if (named.length) {
@@ -203,4 +204,67 @@ export async function fetchFromYouTube(f: Filters): Promise<string[]> {
     }
   }
   return notes;
+}
+
+// ---- Saving podcasts and articles to the library ----
+
+export async function upsertItems(format: "listen" | "read", items: NewItem[]) {
+  // One row per URL.
+  const seen = new Set<string>();
+  items = items.filter((i) => (seen.has(i.url) ? false : (seen.add(i.url), true)));
+  if (!items.length) return;
+
+  const kinds = new Map<string, NewItem>();
+  for (const i of items) kinds.set(`${i.sourceKind}|${i.sourceExt}`, i);
+  const src = [...kinds.values()];
+  const srcRows = await q<{ id: number; kind: string; external_id: string }>(
+    `insert into sources (kind, external_id, name, url)
+     select t.kind, t.ext, t.name, t.url from unnest($1::text[], $2::text[], $3::text[], $4::text[]) as t(kind, ext, name, url)
+     on conflict (kind, external_id) do update set name = sources.name
+     returning id, kind, external_id`,
+    [src.map((s) => s.sourceKind), src.map((s) => s.sourceExt), src.map((s) => s.sourceName), src.map((s) => s.sourceUrl ?? "")],
+  );
+  const srcId = new Map(srcRows.map((r) => [`${r.kind}|${r.external_id}`, r.id]));
+
+  await q(
+    `insert into content_items
+       (format, external_id, url, title, description, thumbnail, source_id, source_name, duration_sec, published_at, hint_language)
+     select $1, nullif(t.ext, ''), t.url, t.title, t.descr, nullif(t.thumb, ''), t.sid, t.sname, t.dur, t.pub, nullif(t.hint, '')
+     from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[], $8::text[], $9::int[], $10::timestamptz[], $11::text[])
+       as t(ext, url, title, descr, thumb, sid, sname, dur, pub, hint)
+     on conflict do nothing`,
+    [
+      format,
+      items.map((i) => i.externalId ?? ""),
+      items.map((i) => i.url),
+      items.map((i) => i.title),
+      items.map((i) => i.description),
+      items.map((i) => i.thumbnail ?? ""),
+      items.map((i) => srcId.get(`${i.sourceKind}|${i.sourceExt}`)!),
+      items.map((i) => i.sourceName),
+      items.map((i) => i.durationSec),
+      items.map((i) => i.publishedAt),
+      items.map((i) => i.hintLanguage ?? ""),
+    ],
+  );
+}
+
+/** The 12-hour rule: returns up to `n` least-recently-run keys that have not run in the last 12 hours. */
+export async function dueKeys(kind: string, keys: string[], n: number): Promise<string[]> {
+  const ran = await q<{ key: string; ran_at: string }>(
+    "select key, max(ran_at) as ran_at from fetch_log where kind = $1 group by key",
+    [kind],
+  );
+  const last = new Map(ran.map((r) => [r.key, new Date(r.ran_at).getTime()]));
+  const cutoff = Date.now() - 12 * 3600 * 1000;
+  return keys
+    .map((k) => ({ k, t: last.get(k) ?? 0 }))
+    .filter((x) => x.t < cutoff)
+    .sort((a, b) => a.t - b.t)
+    .slice(0, n)
+    .map((x) => x.k);
+}
+
+export async function logFetch(kind: string, key: string, count: number) {
+  await q("insert into fetch_log (kind, key, result_count) values ($1, $2, $3)", [kind, key, count]);
 }

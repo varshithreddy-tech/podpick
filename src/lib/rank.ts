@@ -98,14 +98,17 @@ export async function rankItems(candidates: Item[], participants: Participant[])
       c,
       s: (c.topic_tags.some((t) => wantTopics.has(t)) ? 2 : 0) + (c.mood_tags.some((m) => wantMoods.has(m)) ? 1 : 0),
     }))
-    .sort((a, b) => b.s - a.s || (b.c.views ?? 0) - (a.c.views ?? 0))
-    .slice(0, MAX_CANDIDATES)
-    .map((x) => x.c);
+    .sort((a, b) => b.s - a.s || (b.c.views ?? 0) - (a.c.views ?? 0));
+  // Keep a balanced mix of formats in the shortlist: view counts only exist for videos, so a plain
+  // popularity sort would crowd out podcasts and articles. No format gets a ranking boost, only a fair shot.
+  const formats = [...new Set(pre.map((x) => x.c.format))];
+  const perFormat = Math.ceil(MAX_CANDIDATES / Math.max(1, formats.length));
+  const shortlist = formats.flatMap((fmt) => pre.filter((x) => x.c.format === fmt).slice(0, perFormat)).map((x) => x.c);
 
   const ctx = await Promise.all(participants.map(context));
   const prompt = JSON.stringify({
     participants: ctx,
-    candidates: pre.map((c) => ({
+    candidates: shortlist.map((c) => ({
       id: String(c.id),
       type: c.format,
       title: c.title,
@@ -120,7 +123,7 @@ export async function rankItems(candidates: Item[], participants: Participant[])
     results: { id: string; scores: { profile_id: string; score: number; reason: string }[]; combined_reason?: string }[];
   }>(SYSTEM, prompt, SCHEMA);
 
-  const byId = new Map(pre.map((c) => [String(c.id), c]));
+  const byId = new Map(shortlist.map((c) => [String(c.id), c]));
   const penalties = new Map(await Promise.all(participants.map(async (p) => [p.profileId, await sourcePenalties(p.profileId)] as const)));
 
   const scored: Pick[] = [];

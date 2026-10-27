@@ -1,1 +1,1 @@
-{ "functions": { "src/app/api/sessions/[id]/recommend/route.ts": { "maxDuration": 60 } } }
+{ "functions": { "src/app/api/sessions/[id]/recommend/route.ts": { "maxDuration": 120 } } }

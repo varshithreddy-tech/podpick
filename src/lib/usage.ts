@@ -22,3 +22,12 @@ export async function youtubeUnitsToday(): Promise<number> {
 }
 
 export const youtubeBudget = () => Number(env("YOUTUBE_DAILY_UNIT_BUDGET", "8000"));
+
+export async function tavilyCreditsThisMonth(): Promise<number> {
+  const r = await q1<{ units: number }>(
+    "select coalesce(sum(units), 0)::int as units from api_usage where service = 'tavily' and day >= date_trunc('month', current_date)",
+  );
+  return r?.units ?? 0;
+}
+
+export const tavilyBudget = () => Number(env("TAVILY_MONTHLY_BUDGET", "900"));
