@@ -97,13 +97,20 @@ export async function getHighlights(itemId: number): Promise<{ clips: Clip[]; no
 
   try {
     const channelId = item.format === "watch" && item.src_kind === "youtube_channel" ? item.src_ext ?? undefined : undefined;
-    const query = channelId ? item.title : `${item.source_name} ${item.title}`;
-    const own = /[?&]v=([\w-]{11})/.exec(item.url)?.[1];
-    const found = (await searchVideos(query, "relevance", "any", channelId))
-      .filter((v) => v.id !== own && v.durationSec >= CLIP_MIN_SEC && v.durationSec <= CLIP_MAX_SEC)
-      // Without a channel to anchor on, only keep clips whose title clearly relates to the episode.
-      .filter((v) => channelId || similarity(item.title, v.title) >= 0.3)
-      .slice(0, MAX_CLIPS - clips.length);
+    const own = /[?&]v=([w-]{11})/.exec(item.url)?.[1];
+    const want = MAX_CLIPS - clips.length;
+    const isClip = (v: { id: string; durationSec: number }) => v.id !== own && v.durationSec >= CLIP_MIN_SEC && v.durationSec <= CLIP_MAX_SEC;
+
+    // Strategy 1: clips on the episode's own channel. Strategy 2 (if that finds nothing): anywhere on YouTube,
+    // keeping only clips whose title clearly relates to the episode.
+    let found = channelId ? (await searchVideos(item.title, "relevance", "any", channelId)).filter(isClip).slice(0, want) : [];
+    if (!found.length) {
+      const query = item.format === "watch" ? item.title : `${item.source_name} ${item.title}`;
+      found = (await searchVideos(query, "relevance", "any"))
+        .filter(isClip)
+        .filter((v) => similarity(item.title, v.title) >= 0.3)
+        .slice(0, want);
+    }
     await upsertVideos(found);
     await q("insert into fetch_log (kind, key, result_count) values ('highlights', $1, $2)", [String(itemId), found.length]);
     if (found.length) {
