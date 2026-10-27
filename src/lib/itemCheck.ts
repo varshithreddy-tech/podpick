@@ -17,20 +17,28 @@ For each item decide:
 Return one result per input item, using the same id.`;
 
 const SCHEMA = {
-  type: "ARRAY",
-  items: {
-    type: "OBJECT",
-    properties: {
-      id: { type: "STRING" },
-      is_quality: { type: "BOOLEAN" },
-      reason: { type: "STRING" },
-      language: { type: "STRING" },
-      topics: { type: "ARRAY", items: { type: "STRING" } },
-      moods: { type: "ARRAY", items: { type: "STRING" } },
-      summary: { type: "STRING" },
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          is_quality: { type: "boolean" },
+          reason: { type: "string" },
+          language: { type: "string" },
+          topics: { type: "array", items: { type: "string" } },
+          moods: { type: "array", items: { type: "string" } },
+          summary: { type: "string" },
+        },
+        required: ["id", "is_quality", "reason", "language", "topics", "moods", "summary"],
+      },
     },
-    required: ["id", "is_quality", "reason", "language", "topics", "moods", "summary"],
   },
+  required: ["results"],
 };
 
 type Row = {
@@ -79,7 +87,7 @@ export async function checkNewItems(): Promise<{ checked: number; failed: number
         })),
       });
       try {
-        const results = await geminiJson<Result[]>(SYSTEM, prompt, SCHEMA);
+        const { results } = await geminiJson<{ results: Result[] }>(SYSTEM, prompt, SCHEMA);
         const valid = new Set(batch.map((r) => String(r.id)));
         const clean = results
           .filter((r) => valid.has(String(r.id)))

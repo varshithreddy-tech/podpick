@@ -12,23 +12,32 @@ Do not apply any penalty for disliked sources: that is handled separately in cod
 If there is more than one participant, also give "combined_reason": one line on why it fits (or fails to fit) both people.`;
 
 const SCHEMA = {
-  type: "ARRAY",
-  items: {
-    type: "OBJECT",
-    properties: {
-      id: { type: "STRING" },
-      scores: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: { profile_id: { type: "STRING" }, score: { type: "NUMBER" }, reason: { type: "STRING" } },
-          required: ["profile_id", "score", "reason"],
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          scores: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: { profile_id: { type: "string" }, score: { type: "number" }, reason: { type: "string" } },
+              required: ["profile_id", "score", "reason"],
+            },
+          },
+          combined_reason: { type: "string" },
         },
+        required: ["id", "scores", "combined_reason"],
       },
-      combined_reason: { type: "STRING" },
     },
-    required: ["id", "scores"],
   },
+  required: ["results"],
 };
 
 export type Pick = {
@@ -103,9 +112,9 @@ export async function rankItems(candidates: Item[], participants: Participant[])
       moods: c.mood_tags,
     })),
   });
-  const results = await geminiJson<{ id: string; scores: { profile_id: string; score: number; reason: string }[]; combined_reason?: string }[]>(
-    SYSTEM, prompt, SCHEMA,
-  );
+  const { results } = await geminiJson<{
+    results: { id: string; scores: { profile_id: string; score: number; reason: string }[]; combined_reason?: string }[];
+  }>(SYSTEM, prompt, SCHEMA);
 
   const byId = new Map(pre.map((c) => [String(c.id), c]));
   const penalties = new Map(await Promise.all(participants.map(async (p) => [p.profileId, await sourcePenalties(p.profileId)] as const)));
