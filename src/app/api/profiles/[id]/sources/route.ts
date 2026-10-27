@@ -22,3 +22,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return { ok: true };
   });
 }
+
+// Remove a source from this profile's taste list (the library keeps its items).
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return handle(async () => {
+    const profileId = Number((await ctx.params).id);
+    await requireProfile(profileId);
+    const sourceId = Number(new URL(req.url).searchParams.get("sourceId"));
+    await q("delete from profile_sources where profile_id = $1 and source_id = $2", [profileId, sourceId]);
+    return { ok: true };
+  });
+}

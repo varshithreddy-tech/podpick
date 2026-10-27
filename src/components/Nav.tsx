@@ -6,6 +6,8 @@ const LINKS = [
   ["/", "Ask"],
   ["/saved", "Saved"],
   ["/history", "History"],
+  ["/stats", "Stats"],
+  ["/settings", "Settings"],
 ];
 
 export default function Nav() {
