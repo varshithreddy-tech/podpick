@@ -7,8 +7,9 @@ export type SessionRow = {
   id: string;
   mode: "solo" | "together";
   shared_format: string;
-  status: "open" | "running" | "done";
+  status: "open" | "running" | "done" | "expired";
   join_code: string | null;
+  pair: boolean;
   created_by: number | null;
   started_at: string | null;
 };
@@ -21,7 +22,7 @@ export type SessionParticipant = Participant & { ready: boolean };
  */
 export async function loadSession(sessionId: string) {
   const session = await q1<SessionRow>(
-    "select id, mode, shared_format, status, join_code, created_by, started_at from sessions where id = $1",
+    "select id, mode, shared_format, status, join_code, pair, created_by, started_at from sessions where id = $1",
     [sessionId],
   );
   if (!session) throw new HttpError(404, "Session not found");

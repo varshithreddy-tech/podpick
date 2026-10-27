@@ -10,6 +10,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       mode: session.mode,
       status: session.status,
       joinCode: session.join_code,
+      pair: session.pair,
       format: session.shared_format,
       creatorId: session.created_by,
       mine,

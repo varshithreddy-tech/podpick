@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 
@@ -15,24 +14,24 @@ export default function Ask() {
   const askId = useRef<string>("");
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
   const [cfg, setCfg] = useState<Cfg | null>(null);
-  const [who, setWho] = useState<number | null>(null);
-  const [fields, setFields] = useState<Record<number, Fields>>({});
+  const [who, setWho] = useState<number | null>(null); // a profile id, or BOTH
+  const [me, setMe] = useState<number | null>(null); // which person this phone is, used in Both mode
+  const [fields, setFields] = useState<Fields>(EMPTY);
   const [format, setFormat] = useState("any");
-  const [pins, setPins] = useState<Record<number, string>>({});
+  const [pin, setPin] = useState("");
+  const [waiting, setWaiting] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function loadProfiles() {
     const r = await api<{ profiles: Profile[] }>("/api/profiles");
     setProfiles(r.profiles);
-    if (!r.profiles.length) router.replace("/setup?slot=1");
-    else
-      setWho((w) => {
-        if (w != null) return w;
-        let saved: number | null = null;
-        try { saved = Number(localStorage.getItem("pp_profile")) || null; } catch {}
-        return r.profiles.find((p) => p.id === saved)?.id ?? r.profiles[0].id;
-      });
+    if (!r.profiles.length) return router.replace("/setup?slot=1");
+    let saved: number | null = null;
+    try { saved = Number(localStorage.getItem("pp_profile")) || null; } catch {}
+    const first = r.profiles.find((p) => p.id === saved)?.id ?? r.profiles[0].id;
+    setWho((w) => w ?? first);
+    setMe((m) => m ?? first);
   }
 
   useEffect(() => {
@@ -42,59 +41,60 @@ export default function Ask() {
     api<Cfg>("/api/config").then(setCfg).catch((e) => setErr(e.message));
   }, []);
 
-  if (!profiles || !cfg || who == null) return <p style={{ color: "var(--muted)" }}>{err || "Loading…"}</p>;
+  const together = who === BOTH;
+  const active = together ? me : who; // the one person whose options this phone is choosing
+  const person = profiles?.find((p) => p.id === active);
+  const locked = !!person && person.hasPin && !person.unlocked;
 
-  const selected = who === BOTH ? profiles : profiles.filter((p) => p.id === who);
-  const locked = selected.filter((p) => p.hasPin && !p.unlocked);
-  const f = (id: number) => fields[id] ?? EMPTY;
-  const setF = (id: number, k: keyof Fields, v: string) => setFields((s) => ({ ...s, [id]: { ...f(id), [k]: v } }));
+  // Tell this person if the other one is already waiting.
+  useEffect(() => {
+    if (!together || !active || locked) return setWaiting(null);
+    let stop = false;
+    const check = () => api<{ waiting: string | null }>(`/api/pair?profileId=${active}`).then((r) => !stop && setWaiting(r.waiting)).catch(() => {});
+    check();
+    const t = setInterval(check, 5000);
+    return () => { stop = true; clearInterval(t); };
+  }, [together, active, locked]);
 
-  function choose(id: number) {
-    setWho(id);
-    setErr("");
-    if (id !== BOTH) try { localStorage.setItem("pp_profile", String(id)); } catch {}
-  }
+  if (!profiles || !cfg || who == null || active == null) return <p style={{ color: "var(--muted)" }}>{err || "Loading…"}</p>;
 
-  async function unlock(p: Profile, e: React.FormEvent) {
+  const remember = (id: number) => { try { localStorage.setItem("pp_profile", String(id)); } catch {} };
+  const set = (k: keyof Fields, v: string) => setFields((s) => ({ ...s, [k]: v }));
+
+  async function unlock(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     try {
-      await api(`/api/profiles/${p.id}/unlock`, { pin: pins[p.id] ?? "" });
-      setPins((s) => ({ ...s, [p.id]: "" }));
+      await api(`/api/profiles/${active}/unlock`, { pin });
+      setPin("");
       await loadProfiles();
     } catch (e: any) {
       setErr(e.message);
     }
   }
 
-  async function go(mode: "solo" | "together" | "remote") {
+  async function go() {
     setBusy(true);
     setErr("");
     try {
       const { sessionId } = await api<{ sessionId: string }>("/api/sessions", {
         askId: askId.current,
-        mode,
+        mode: together ? "pair" : "solo",
         format,
-        participants: selected.map((p) => ({ profileId: p.id, ...f(p.id) })),
+        participants: [{ profileId: active, ...fields }],
       });
-      router.push(mode === "remote" ? `/together/${sessionId}` : `/picks/${sessionId}`);
+      remember(active!);
+      if (together) {
+        // This phone is this person: the picks screen only shows their rating buttons.
+        try { localStorage.setItem(`pp_me_${sessionId}`, String(active)); } catch {}
+        router.push(`/together/${sessionId}`);
+      } else router.push(`/picks/${sessionId}`);
     } catch (e: any) {
-      setErr(e.code === "locked" ? "Unlock the selected profiles first" : e.message);
+      setErr(e.code === "locked" ? "Unlock your profile first" : e.message);
       setBusy(false);
       loadProfiles().catch(() => {});
     }
   }
-
-  const block = (p: Profile, title?: string) => (
-    <div key={p.id} className="space-y-3">
-      {title && <h2 className="text-lg font-semibold">{title}</h2>}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Select label="Mood" value={f(p.id).mood} onChange={(v) => setF(p.id, "mood", v)} options={cfg.moods.map((m) => [m, m])} />
-        <Select label="Topic" value={f(p.id).topic} onChange={(v) => setF(p.id, "topic", v)} options={cfg.topics.map((t) => [t, t])} />
-        <Select label="Time" value={f(p.id).time} onChange={(v) => setF(p.id, "time", v)} options={cfg.timeSlots.map((t) => [t.key, t.label])} />
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -104,45 +104,62 @@ export default function Ask() {
         <div className="label">Who&apos;s listening?</div>
         <div className="flex flex-wrap gap-2">
           {profiles.map((p) => (
-            <button key={p.id} className="chip" aria-pressed={who === p.id} onClick={() => choose(p.id)}>
+            <button key={p.id} className="chip" aria-pressed={who === p.id} onClick={() => { setWho(p.id); setMe(p.id); setErr(""); remember(p.id); }}>
               {p.name}{p.hasPin && !p.unlocked ? " 🔒" : ""}
             </button>
           ))}
           {profiles.length > 1 && (
-            <button className="chip" aria-pressed={who === BOTH} onClick={() => choose(BOTH)}>Both</button>
+            <button className="chip" aria-pressed={together} onClick={() => { setWho(BOTH); setErr(""); }}>Both</button>
           )}
         </div>
-        {profiles.length === 1 && (
-          <Link href="/setup?slot=2" className="mt-3 inline-block text-sm underline" style={{ color: "var(--muted)" }}>
-            + Add the second profile
-          </Link>
-        )}
       </section>
 
-      {locked.map((p) => (
-        <form key={p.id} onSubmit={(e) => unlock(p, e)} className="card max-w-sm space-y-3 p-4">
-          <label className="label">Enter {p.name}&apos;s PIN</label>
-          <input className="field" type="password" inputMode="numeric" maxLength={4} value={pins[p.id] ?? ""}
-            onChange={(e) => setPins((s) => ({ ...s, [p.id]: e.target.value.replace(/\D/g, "") }))} />
-          <button className="btn" disabled={(pins[p.id] ?? "").length !== 4}>Unlock {p.name}</button>
-        </form>
-      ))}
+      {together && (
+        <section className="space-y-3">
+          <p style={{ color: "var(--muted)" }}>
+            Choose your own options here. The other person opens PodPick on their phone, taps <b>Both</b> and chooses theirs.
+            You&apos;ll both get the same picks.
+          </p>
+          <div>
+            <div className="label">Which one are you on this phone?</div>
+            <div className="flex flex-wrap gap-2">
+              {profiles.map((p) => (
+                <button key={p.id} className="chip" aria-pressed={me === p.id} onClick={() => { setMe(p.id); setErr(""); }}>
+                  I&apos;m {p.name}{p.hasPin && !p.unlocked ? " 🔒" : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+          {waiting && (
+            <p className="rounded-xl border p-3 font-medium" style={{ borderColor: "var(--accent)" }}>
+              {waiting} is waiting for you. Choose your options and tap the button to start.
+            </p>
+          )}
+        </section>
+      )}
 
-      {!locked.length && (
+      {locked ? (
+        <form onSubmit={unlock} className="card max-w-sm space-y-3 p-4">
+          <label className="label">Enter {person!.name}&apos;s PIN</label>
+          <input className="field" type="password" inputMode="numeric" maxLength={4} autoFocus value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+          <button className="btn" disabled={pin.length !== 4}>Unlock {person!.name}</button>
+        </form>
+      ) : (
         <>
-          {who === BOTH ? selected.map((p) => block(p, `${p.name} wants…`)) : block(selected[0])}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Select label="Mood" value={fields.mood} onChange={(v) => set("mood", v)} options={cfg.moods.map((m) => [m, m])} />
+            <Select label="Topic" value={fields.topic} onChange={(v) => set("topic", v)} options={cfg.topics.map((t) => [t, t])} />
+            <Select label="Time" value={fields.time} onChange={(v) => set("time", v)} options={cfg.timeSlots.map((t) => [t.key, t.label])} />
+          </div>
           <div className="max-w-xs">
-            <Select label={who === BOTH ? "Format (shared)" : "Format"} value={format === "any" ? "" : format} onChange={(v) => setFormat(v || "any")}
+            <Select label={together ? "Format (shared)" : "Format"} value={format === "any" ? "" : format} onChange={(v) => setFormat(v || "any")}
               options={[["watch", "Watch"], ["listen", "Listen"], ["read", "Read"]]} />
           </div>
-          <div className="flex flex-col gap-3 sm:max-w-xs">
-            <button className="btn" disabled={busy} onClick={() => go(who === BOTH ? "together" : "solo")}>
-              {busy ? "One moment…" : who === BOTH ? "Find picks for both of us" : "Find my 5 picks"}
+          <div className="sm:max-w-xs">
+            <button className="btn" disabled={busy} onClick={go}>
+              {busy ? "One moment…" : together ? "Find picks together" : "Find my 5 picks"}
             </button>
-            {who !== BOTH && profiles.length > 1 && (
-              <button className="btn-ghost" disabled={busy} onClick={() => go("remote")}>Ask together on two phones</button>
-            )}
-            {profiles.length > 1 && <Link href="/join" className="btn-ghost">Join with a code</Link>}
           </div>
         </>
       )}

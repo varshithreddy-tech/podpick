@@ -71,6 +71,7 @@ export async function recommend(sessionId: string): Promise<RecommendResponse> {
   };
 
   if (session.status === "done") return storedResult(sessionId, session.mode, base);
+  if (session.status === "expired") throw new HttpError(410, "This session was cancelled or timed out");
   if (session.mode === "together" && (participants.length < 2 || !participants.every((p) => p.ready))) {
     throw new HttpError(409, "Waiting for both people to be ready");
   }

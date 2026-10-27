@@ -31,12 +31,16 @@ export default function Picks({ params }: { params: Promise<{ id: string }> }) {
     let stop = false;
     async function run() {
       try {
-        const r = await api<Res | { status: "running" }>(`/api/sessions/${id}/recommend`, {});
+        let r = (await api<Res | { status: "running" }>(`/api/sessions/${id}/recommend`, {})) as Res | { status: "running" };
         if (stop) return;
         if (r.status === "running") {
           setTimeout(run, 2500);
           return;
         }
+        // On a phone that paired as one person, only that person's rating buttons show.
+        let meId: number | null = null;
+        try { meId = Number(localStorage.getItem(`pp_me_${id}`)) || null; } catch {}
+        if (meId && r.mine.includes(meId)) r = { ...r, mine: [meId] };
         setRes(r);
         const items = [...r.picks.map((p) => p.item.id), ...Object.values(r.fallbacks ?? {}).filter(Boolean).map((p) => p!.item.id)];
         const ids = [...new Set(items)].join(",");
