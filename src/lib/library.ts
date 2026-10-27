@@ -59,8 +59,8 @@ export type Filters = {
  */
 export async function eligibleItems(f: Filters, opts: { applyMood?: boolean; limit?: number } = {}): Promise<Item[]> {
   const slot = effectiveSlot(f.participants);
-  const readMin = slot.key === "u30" ? 0 : slot.min / 60;
-  const readMax = slot.max / 60;
+  const readMin = slot.key === "u30" ? 0 : Math.floor(slot.min / 60);
+  const readMax = Math.ceil(slot.max / 60);
   const profileIds = f.participants.map((p) => p.profileId);
   const topics = f.participants.map((p) => p.topic);
   const moods = f.participants.map((p) => p.mood);

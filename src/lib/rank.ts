@@ -1,5 +1,6 @@
 import { q } from "./db";
-import { MAX_PICKS, MIN_SCORE, SOURCE_PENALTY } from "./config";
+import { MAX_PICKS, MIN_SCORE } from "./config";
+import { sourcePenalty } from "./rules";
 import { geminiJson } from "./gemini";
 import type { Item, Participant } from "./library";
 
@@ -61,7 +62,10 @@ export async function sourcePenalties(profileId: number): Promise<Map<number, nu
     [profileId],
   );
   const m = new Map<number, number>();
-  for (const r of rows) if (r.dislikes >= 3 && r.dislikes > r.loves) m.set(r.source_id, SOURCE_PENALTY);
+  for (const r of rows) {
+    const p = sourcePenalty(r.loves, r.dislikes);
+    if (p) m.set(r.source_id, p);
+  }
   return m;
 }
 

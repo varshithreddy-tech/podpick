@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, fmtLength } from "@/lib/client";
+import FeedbackBar, { type FbState } from "@/components/FeedbackBar";
 
 type PickT = {
   rank: number;
@@ -16,9 +17,18 @@ export default function Picks({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [res, setRes] = useState<Res | null>(null);
   const [err, setErr] = useState("");
+  const [fb, setFb] = useState<Record<string, FbState> | null>(null);
 
   useEffect(() => {
-    api<Res>(`/api/sessions/${id}/recommend`, {}).then(setRes).catch((e) => setErr(e.message));
+    api<Res>(`/api/sessions/${id}/recommend`, {})
+      .then(async (r) => {
+        setRes(r);
+        const pid = r.participants[0]?.profileId;
+        const ids = r.picks.map((p) => p.item.id).join(",");
+        const f = pid && ids ? await api<{ map: Record<string, FbState> }>(`/api/feedback?profileId=${pid}&ids=${ids}`).catch(() => null) : null;
+        setFb(f?.map ?? {});
+      })
+      .catch((e) => setErr(e.message));
   }, [id]);
 
   function opened(itemId: number) {
@@ -63,6 +73,9 @@ export default function Picks({ params }: { params: Promise<{ id: string }> }) {
               <a className="btn mt-2" href={p.item.url} target="_blank" rel="noopener noreferrer" onClick={() => opened(p.item.id)}>
                 Open
               </a>
+              {res.participants[0] && fb && (
+                <FeedbackBar profileId={res.participants[0].profileId} itemId={p.item.id} sessionId={id} initial={fb[p.item.id]} />
+              )}
             </div>
           </article>
         ))}
