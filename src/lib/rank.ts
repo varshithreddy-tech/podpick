@@ -1,6 +1,6 @@
 import { q } from "./db";
 import { MAX_PICKS, MIN_SCORE } from "./config";
-import { sourcePenalty } from "./rules";
+import { shortlistCandidates, sourcePenalty } from "./rules";
 import { geminiJson } from "./gemini";
 import type { Item, Participant } from "./library";
 
@@ -90,20 +90,8 @@ async function context(p: Participant) {
 export async function rankItems(candidates: Item[], participants: Participant[]): Promise<RankResult> {
   if (!candidates.length) return { picks: [], bestPerPerson: {}, scoredCount: 0 };
 
-  // Pre-trim to the most relevant 40 so the prompt stays small: topic/mood matches first, then popularity.
-  const wantTopics = new Set(participants.map((p) => p.topic).filter(Boolean));
-  const wantMoods = new Set(participants.map((p) => p.mood).filter(Boolean));
-  const pre = candidates
-    .map((c) => ({
-      c,
-      s: (c.topic_tags.some((t) => wantTopics.has(t)) ? 2 : 0) + (c.mood_tags.some((m) => wantMoods.has(m)) ? 1 : 0),
-    }))
-    .sort((a, b) => b.s - a.s || (b.c.views ?? 0) - (a.c.views ?? 0));
-  // Keep a balanced mix of formats in the shortlist: view counts only exist for videos, so a plain
-  // popularity sort would crowd out podcasts and articles. No format gets a ranking boost, only a fair shot.
-  const formats = [...new Set(pre.map((x) => x.c.format))];
-  const perFormat = Math.ceil(MAX_CANDIDATES / Math.max(1, formats.length));
-  const shortlist = formats.flatMap((fmt) => pre.filter((x) => x.c.format === fmt).slice(0, perFormat)).map((x) => x.c);
+  // Pre-trim to about 40 so the prompt stays small, without popularity crowding out anyone's topic.
+  const shortlist = shortlistCandidates(candidates, participants, MAX_CANDIDATES);
 
   const ctx = await Promise.all(participants.map(context));
   const prompt = JSON.stringify({
