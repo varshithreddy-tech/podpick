@@ -1,0 +1,17 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { similarity } from "../src/lib/highlights";
+
+test("a clip of the same conversation matches the episode title", () => {
+  const ep = "Dropout To Billionaire - Zerodha's Founder Nikhil Kamath's Journey To SUCCESS";
+  assert.ok(similarity(ep, "Nikhil Kamath on dropping out and becoming a billionaire") >= 0.3);
+});
+
+test("an unrelated video does not match", () => {
+  assert.ok(similarity("Building a bootstrapped startup with the Noise founder", "Best pasta recipes for dinner tonight") < 0.3);
+});
+
+test("empty or tiny titles score zero", () => {
+  assert.equal(similarity("", "anything here"), 0);
+  assert.equal(similarity("a b c", "d e f"), 0);
+});

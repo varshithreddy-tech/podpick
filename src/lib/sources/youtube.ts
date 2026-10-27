@@ -84,10 +84,15 @@ export async function channelUploads(channelId: string, pages = 2): Promise<YtVi
 }
 
 /** Discovery search: ~100 units. `length` "long" is YouTube's >20 min bucket; "any" also returns clips, shorts and highlights. */
-export async function searchVideos(query: string, order: "relevance" | "viewCount", length: "long" | "any" = "any"): Promise<YtVideo[]> {
+export async function searchVideos(
+  query: string,
+  order: "relevance" | "viewCount",
+  length: "long" | "any" = "any",
+  channelId?: string,
+): Promise<YtVideo[]> {
   const data = await yt(
     "search",
-    { part: "snippet", type: "video", videoDuration: length, maxResults: "50", q: query, order },
+    { part: "snippet", type: "video", videoDuration: length, maxResults: channelId ? "25" : "50", q: query, order, ...(channelId && { channelId }) },
     100,
   );
   const ids = (data.items ?? []).map((i: any) => i.id?.videoId).filter(Boolean);

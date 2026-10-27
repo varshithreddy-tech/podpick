@@ -3,6 +3,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, fmtLength } from "@/lib/client";
 import FeedbackBar, { type FbState } from "@/components/FeedbackBar";
+import Highlights from "@/components/Highlights";
 
 type Item = { id: number; format: string; url: string; title: string; thumbnail: string | null; source_name: string; duration_sec: number | null; read_min: number | null };
 type PickT = { rank: number; reason: string; item: Item };
@@ -99,6 +100,9 @@ export default function Picks({ params }: { params: Promise<{ id: string }> }) {
         <a className="btn mt-2" href={p.item.url} target="_blank" rel="noopener noreferrer" onClick={() => opened(p.item.id)}>
           Open
         </a>
+        {(p.item.format === "watch" || p.item.format === "listen") && (
+          <Highlights sessionId={id} itemId={p.item.id} onOpen={(clipId) => opened(clipId)} />
+        )}
         {res.mine.map((pid) => (
           <FeedbackBar key={pid} profileId={pid} itemId={p.item.id} sessionId={id}
             initial={fb[pid]?.[p.item.id]} label={many ? `${names.get(pid)}'s rating` : undefined} />
