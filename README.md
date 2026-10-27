@@ -16,3 +16,9 @@ Picks 5 things you will actually watch, listen to or read. Build step 1 (solo, Y
 - `src/lib/rank.ts` Gemini step 2, the -2 source penalty, the 6+ cut-off and the lower-of-two rule.
 - `src/lib/auth.ts` app password, PIN hashing and throttling, 30-minute profile lock (`requireProfile` guards all private data).
 - `src/lib/usage.ts` and `src/lib/sources/youtube.ts` quota tracking and the daily unit budget.
+
+## Deploy
+
+Live: https://podpick-rho.vercel.app (Vercel project `podpick`, auto-deploys from `main`).
+Environment variables live in Vercel (Settings → Environment Variables); keep `.env.local` in sync when keys change.
+Optional keys not set yet: `PODCASTINDEX_API_KEY`, `PODCASTINDEX_API_SECRET` (podcasts fall back to Apple), `TAVILY_API_KEY` (Read items stay off without it).
