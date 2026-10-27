@@ -24,6 +24,13 @@ export function tokens(s: string): Set<string> {
   );
 }
 
+/** The first few meaningful words of a title (usually the guest and topic), in order. Long exact titles search poorly. */
+export function keywords(title: string, n = 5): string {
+  const seen = new Set<string>();
+  for (const w of title.toLowerCase().replace(/[^p{L}p{N}s]/gu, " ").split(/s+/)) if (w.length >= 4 && !STOP.has(w)) seen.add(w);
+  return [...seen].slice(0, n).join(" ");
+}
+
 /** Share of the smaller title's words that also appear in the other (0 to 1). */
 export function similarity(a: string, b: string): number {
   const ta = tokens(a), tb = tokens(b);
@@ -105,7 +112,7 @@ export async function getHighlights(itemId: number): Promise<{ clips: Clip[]; no
     // keeping only clips whose title clearly relates to the episode.
     let found = channelId ? (await searchVideos(item.title, "relevance", "any", channelId)).filter(isClip).slice(0, want) : [];
     if (!found.length) {
-      const query = item.format === "watch" ? item.title : `${item.source_name} ${item.title}`;
+      const query = item.format === "watch" ? keywords(item.title) : `${item.source_name} ${item.title}`;
       found = (await searchVideos(query, "relevance", "any"))
         .filter(isClip)
         .filter((v) => similarity(item.title, v.title) >= 0.3)

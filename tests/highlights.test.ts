@@ -15,3 +15,8 @@ test("empty or tiny titles score zero", () => {
   assert.equal(similarity("", "anything here"), 0);
   assert.equal(similarity("a b c", "d e f"), 0);
 });
+
+import { keywords } from "../src/lib/highlights";
+test("keywords keeps the guest and topic words in order", () => {
+  assert.equal(keywords("Shobana Kamineni: The Apollo Builder Behind 3 Healthcare Unicorns"), "shobana kamineni apollo builder behind");
+});
