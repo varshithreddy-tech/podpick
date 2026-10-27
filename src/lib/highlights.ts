@@ -104,7 +104,7 @@ export async function getHighlights(itemId: number): Promise<{ clips: Clip[]; no
 
   try {
     const channelId = item.format === "watch" && item.src_kind === "youtube_channel" ? item.src_ext ?? undefined : undefined;
-    const own = /[?&]v=([w-]{11})/.exec(item.url)?.[1];
+    const own = /[?&]v=([\w-]{11})/.exec(item.url)?.[1];
     const want = MAX_CLIPS - clips.length;
     const isClip = (v: { id: string; durationSec: number }) => v.id !== own && v.durationSec >= CLIP_MIN_SEC && v.durationSec <= CLIP_MAX_SEC;
 
