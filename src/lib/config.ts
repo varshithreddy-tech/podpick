@@ -1,4 +1,4 @@
-export const MOODS = ["Learn something", "Laugh", "Chill", "Deep and serious", "Inspiring"] as const;
+export const MOODS = ["Learn something", "Laugh", "Chill", "Inspiring"] as const;
 
 export const DEFAULT_TOPICS = [
   "Startup growth stories",
@@ -42,7 +42,6 @@ export const MOOD_QUERIES: Record<string, string> = {
   "Learn something": "educational long form podcast",
   Laugh: "funny podcast full episode",
   Chill: "relaxed conversation podcast",
-  "Deep and serious": "deep conversation podcast",
   Inspiring: "inspiring story podcast",
 };
 
