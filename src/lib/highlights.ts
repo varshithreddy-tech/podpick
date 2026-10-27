@@ -31,13 +31,24 @@ export function keywords(title: string, n = 5): string {
   return [...seen].slice(0, n).join(" ");
 }
 
+/** How many meaningful words two titles share. */
+export function sharedWords(a: string, b: string): number {
+  const ta = tokens(a), tb = tokens(b);
+  let shared = 0;
+  for (const w of ta) if (tb.has(w)) shared++;
+  return shared;
+}
+
 /** Share of the smaller title's words that also appear in the other (0 to 1). */
 export function similarity(a: string, b: string): number {
   const ta = tokens(a), tb = tokens(b);
   if (!ta.size || !tb.size) return 0;
-  let shared = 0;
-  for (const w of ta) if (tb.has(w)) shared++;
-  return shared / Math.min(ta.size, tb.size);
+  return sharedWords(a, b) / Math.min(ta.size, tb.size);
+}
+
+/** A clip counts as related only if it shares at least two meaningful words and a good share of the shorter title. */
+export function related(episodeTitle: string, clipTitle: string): boolean {
+  return sharedWords(episodeTitle, clipTitle) >= 2 && similarity(episodeTitle, clipTitle) >= 0.3;
 }
 
 const clipCols = "ci.id, ci.url, ci.title, ci.thumbnail, ci.duration_sec, ci.source_name";
@@ -85,8 +96,8 @@ export async function getHighlights(itemId: number): Promise<{ clips: Clip[]; no
       [item.source_id, itemId],
     );
     const picked = pool
+      .filter((c) => related(item.title, c.title))
       .map((c) => ({ c, s: similarity(item.title, c.title) }))
-      .filter((x) => x.s >= 0.34)
       .sort((a, b) => b.s - a.s)
       .slice(0, MAX_CLIPS - clips.length)
       .map((x) => x.c.id);
@@ -110,12 +121,12 @@ export async function getHighlights(itemId: number): Promise<{ clips: Clip[]; no
 
     // Strategy 1: clips on the episode's own channel. Strategy 2 (if that finds nothing): anywhere on YouTube,
     // keeping only clips whose title clearly relates to the episode.
-    let found = channelId ? (await searchVideos(item.title, "relevance", "any", channelId)).filter(isClip).slice(0, want) : [];
+    let found = channelId ? (await searchVideos(keywords(item.title), "relevance", "any", channelId)).filter(isClip).filter((v) => related(item.title, v.title)).slice(0, want) : [];
     if (!found.length) {
       const query = item.format === "watch" ? keywords(item.title) : `${item.source_name} ${item.title}`;
       found = (await searchVideos(query, "relevance", "any"))
         .filter(isClip)
-        .filter((v) => similarity(item.title, v.title) >= 0.3)
+        .filter((v) => related(item.title, v.title))
         .slice(0, want);
     }
     await upsertVideos(found);

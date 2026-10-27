@@ -20,3 +20,11 @@ import { keywords } from "../src/lib/highlights";
 test("keywords keeps the guest and topic words in order", () => {
   assert.equal(keywords("Shobana Kamineni: The Apollo Builder Behind 3 Healthcare Unicorns"), "shobana kamineni apollo builder behind");
 });
+
+import { related } from "../src/lib/highlights";
+test("a clip sharing only one word is not related", () => {
+  assert.equal(related("Shobana Kamineni: The Apollo Builder Behind 3 Healthcare Unicorns", "APOLLO HOSPITAL - ROAD TVC"), false);
+});
+test("a clip naming the same guest and company is related", () => {
+  assert.equal(related("Shobana Kamineni: The Apollo Builder Behind 3 Healthcare Unicorns", "Shobana Kamineni on building Apollo"), true);
+});
